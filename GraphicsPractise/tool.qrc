@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/new/prefix1">
+        <file>C:/Users/杨俊杰/Desktop/研究生/图标素材/工具栏图标/Paste16.png</file>
+        <file>C:/Users/杨俊杰/Desktop/研究生/图标素材/工具栏图标/Save16.png</file>
+    </qresource>
+</RCC>

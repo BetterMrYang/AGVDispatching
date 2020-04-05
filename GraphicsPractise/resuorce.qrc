@@ -1,0 +1,22 @@
+<RCC>
+    <qresource prefix="/">
+        <file>../../研究生/图标素材/绘图图标/line.png</file>
+        <file>../../研究生/图标素材/绘图图标/first.png</file>
+        <file>../../研究生/图标素材/绘图图标/merge.png</file>
+        <file>../../研究生/图标素材/工具栏图标/About.png</file>
+        <file>../../研究生/图标素材/工具栏图标/Close.png</file>
+        <file>../../研究生/图标素材/工具栏图标/New.png</file>
+        <file>../../研究生/图标素材/工具栏图标/Save.png</file>
+        <file>../../研究生/图标素材/工具栏图标/垃圾箱.png</file>
+        <file>../../研究生/图标素材/工具栏图标/问号.png</file>
+        <file>../../研究生/图标素材/绘图图标/station.png</file>
+        <file>../../研究生/图标素材/绘图图标/箭头指向相反的方向.png</file>
+        <file>../../研究生/图标素材/绘图图标/射频识别芯片.png</file>
+        <file>../../研究生/图标素材/绘图图标/数字块.png</file>
+        <file>../../研究生/图标素材/绘图图标/信息符号.png</file>
+        <file>../../研究生/图标素材/绘图图标/斜大刷.png</file>
+        <file>../../研究生/图标素材/绘图图标/左窗口滚动.png</file>
+        <file>../../研究生/图标素材/工具栏图标/Open.png</file>
+        <file>../../研究生/研究生行政资料/Icon.ico</file>
+    </qresource>
+</RCC>
