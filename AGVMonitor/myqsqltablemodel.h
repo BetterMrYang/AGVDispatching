@@ -2,6 +2,8 @@
 #define MYQSQLTABLEMODEL_H
 #include <QSqlTableModel>
 
+
+//该类是为了让数据表居中显示
 class MyQSqlTableModel : public QSqlTableModel
 {
 public:

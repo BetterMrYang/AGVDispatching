@@ -18,18 +18,29 @@ public:
     explicit Dialog_agvManagement(QWidget *parent = nullptr);
     ~Dialog_agvManagement();
     Ui::Dialog_agvManagement *ui;
-    bool flag_addAGV = false;
-    AGVTYPE agvType;
-    APPEARTYPE appearType = position;
+
+    AGVTYPE getAGVType();
+    APPEARTYPE getAppearType();
+    bool getFlag_addAGV();
+
     
 
 private slots:
     void on_Btn_add_clicked();
     void slot_appearTypeChange();
     
-    void on_Btn_add_3_clicked();
+    void on_Btn_close_clicked();
+
+    void on_Btn_del_clicked();
 
 private:
+    bool flag_addAGV = false;
+    AGVTYPE agvType;
+    APPEARTYPE appearType = position;
+
+signals:
+    void deleteAGVNo(int);
+
 
 
 };

@@ -15,11 +15,10 @@
 #include <QSqlTableModel>
 #include <QEvent>
 #include <QTimer>
+#include <QGraphicsItemGroup>
 namespace Ui {
 class AGVMonitor;
 }
-
-
 
 struct RoutePoint
 {
@@ -66,8 +65,10 @@ struct AGVInfo
     int agvNo;
     double PosX;
     double PosY;
+    int twinkleStatus= 0;
 };
 
+/*! * @brief AGV监控主界面*/
 class AGVMonitor : public QMainWindow
 {
     Q_OBJECT
@@ -78,6 +79,7 @@ public:
 
 private:
     Ui::AGVMonitor *ui;
+
 
     /*********表格模型**********/
     //任务
@@ -96,7 +98,7 @@ private:
     MyQSqlTableModel*  Model_materialStatus;
 
     QGraphicsScene* m_myScene;
-    MyGraphicsView* m_myView;
+//    MyGraphicsView* ui->ui->graphicsView;
 
     //结构体链表
     QList<Route> m_list_route;
@@ -104,9 +106,14 @@ private:
     QList<StationPoint> m_list_stationPoint;
     QList<AGVInfo> m_list_agvInfo;
 
+    //距离表和路由表
+    QList<QString> m_list_distance;
+    QList<QString> m_list_floyd;
+
     //样式
     QPen RoutePen;
     QPen ArrowPen;
+    QPen PathPen;
     QBrush PointBrush;
     QBrush StationBrush;
     QBrush LiftAgvBrush;
@@ -121,7 +128,7 @@ private:
 
     //串口
     MySerialPort* m_mySerialPort;
-    int count_serialPort = 0;
+//    int count_serialPort = 0;
     int serialPortStatus = 0;//第一次打开为0，1表示show,关闭自动隐藏
 
     //显示监视窗口
@@ -136,14 +143,26 @@ private:
     QTimer* timer_agvPos;
     int count = 0;
 
-    //地图映射偏移
-//    double MapTopLeftX; //电子地图模块参考点X
-//    double MapTopLeftY;
-    double offsetX;
-    double offsetY;
+    //agv闪烁
+    QTimer* timer_twinkle;
+    QList<int> twinkle_no;
 
     //刷新呼叫区
     QTimer* timer_flushCall;
+
+    //控制面板
+    QTimer* timer_direction;
+    int direction = 0; //0——未触发，1——上，2——下，3——左，4——右
+
+    //地图映射偏移
+//    double MapTopLeftX; //电子地图模块参考点X
+//    double MapTopLeftY;
+    double offsetX = 0.0;
+    double offsetY = 0.0;
+
+
+
+    int slider = 1;
 
 
 protected:
@@ -161,14 +180,39 @@ protected:
     QString getXmlRFID(const QDomNode &node,QString type);
     QVector<int> getXmlValueList(const QDomNode &node,QString type);
 
-    //地图映射
-    void mapOffset(QList<QPointF>);
+    //备注
+    void drawRemark(QPointF point,QGraphicsItem* parent,QString type,int RFID);
+
+
+    /*!
+     * @fun readFile
+     * @param QString :文件名称
+     * @reurn mapOffset所需链表
+    */
+    QList<QPointF> readFile(QString);
+
+    /*!
+     * @brief 地图映射
+     * @fun mapOffset
+     * @param QString 文件名称
+     * @return 坐标偏移量
+    */
+    void mapOffset(QString);
 
     //路网监控
     void updateRoad(QString type,int number);
+    QString getInitialPath(int start,int end);
+    QGraphicsItemGroup* showPath(const QString& path);
 
-    //AGV监控
 
+    /*! * @brief AGV监控*/
+    QGraphicsItem* searchAGV(int number);   /*!< 找到对应图元 */
+    void twinkleAGV(int number);            /*!< agv闪烁 */
+    void stopTwinkle(int number);           /*!< 停止闪烁 */
+    bool isTurning(int number);                       /*!< 判断转弯 */
+
+    void directionPressed(int direction);
+    void directionReleased();
 
 
 
@@ -180,10 +224,25 @@ private slots:
     void slot_timer_record(); //考虑在串口处理
     void slot_timer_agvPos();
     void slot_timer_flushCall();
+    void slot_timer_twinkle();
     void slot_agvAccount();
+    void slot_deleteAGVNo(int AGVNo);
     void slot_agvSettings();
+    void slot_test();    
+    void slot_direction();
 
 
+
+    void on_TBtn_up_pressed();
+    void on_TBtn_up_released();
+    void on_TBtn_left_pressed();
+    void on_TBtn_left_released();
+    void on_TBtn_down_pressed();
+    void on_TBtn_down_released();
+    void on_TBtn_right_pressed();
+    void on_TBtn_right_released();
+    void on_RBtn_manual_pressed();
+    void on_RBtn_auto_pressed();
 };
 
 #endif // AGVMONITOR_H

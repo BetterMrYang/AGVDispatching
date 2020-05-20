@@ -2,18 +2,23 @@
 #include "ui_myserialport.h"
 #include <QDebug>
 #include <QTimer>
+#include <synchapi.h>
+#include <QMessageBox>
+QMutex mutex_BUFFER;
+
 MySerialPort::MySerialPort(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::MySerialPort)
 {
     ui->setupUi(this);
     searchInfo();
-    connect(ui->CBX_baud,SIGNAL(currentIndexChanged(const QString&)),this,SLOT(changeCom(const QString&)));
-    connect(ui->CBX_comNo,SIGNAL(currentIndexChanged(const QString&)),this,SLOT(changeCom(const QString&)));
-    QObject::connect(&myCom, SIGNAL(readyRead()), this, SLOT(readyReadSlot()));
+
+    comTimer = new QTimer(this);
     timer = new QTimer(this);
     timer->start(400);
-    connect(timer,SIGNAL(timeout()),this,SLOT(slot_timerout()));
+    initConnect();
+//    myDatabase = new MyDatabase();
+//    myDatabase->createConnection("thread_serialport");
     this->show();
 
 }
@@ -21,6 +26,15 @@ MySerialPort::MySerialPort(QWidget *parent) :
 MySerialPort::~MySerialPort()
 {
     delete ui;
+}
+
+void MySerialPort::initConnect()
+{
+    connect(ui->CBX_baud,SIGNAL(currentIndexChanged(const QString&)),this,SLOT(changeCom(const QString&)));
+    connect(ui->CBX_comNo,SIGNAL(currentIndexChanged(const QString&)),this,SLOT(changeCom(const QString&)));
+    QObject::connect(&myCom, SIGNAL(readyRead()), this, SLOT(slot_comDelay()));
+    QObject::connect(comTimer, SIGNAL(timeout()), this, SLOT(readyReadSlot()));
+    connect(timer,SIGNAL(timeout()),this,SLOT(slot_timerout()));
 }
 
 void MySerialPort::slot_timerout()
@@ -44,6 +58,14 @@ void MySerialPort::slot_timerout()
         searchInfo();
     }
 }
+
+void MySerialPort::slot_comDelay()
+{
+    QMutexLocker Locker(&mutex_BUFFER);
+    comTimer->start(200); //不够再500ms
+    BUFFER.append(myCom.readAll());
+}
+
 
 void MySerialPort::searchInfo()
 {
@@ -83,106 +105,28 @@ void MySerialPort::openCom()
         myCom.setStopBits(QSerialPort::OneStop);
         myCom.setFlowControl(QSerialPort::NoFlowControl);
     }
+    else
+    {
+        QMessageBox::critical(this,tr("错误："),tr("无法打开该串口"));
+    }
 }
 
 
 
 void MySerialPort::readyReadSlot()
 {
-    QByteArray arr = myCom.readAll(); //一次只能读到4个字节，故需根据长度分多次接受(算上逗号共32个字母),用QString拼接后再处理
-    completeContent.append(arr);
-    qDebug() << "接收到" <<completeContent;
+//    mutex.lock();
+    comTimer->stop();
+    dealSerialPort = new Thread_dealSerialPort(BUFFER); //线程处理数据
 
-    QList<QString> bitAccount = completeContent.split(",");
-    if(bitAccount.last().isEmpty())
-    {
-        bitAccount.removeLast();
-    }
-    if(bitAccount.size() == tabAnddata.value(bitAccount[2].toInt()))
-    {
-        qDebug() << "处理" <<completeContent;
-        analyzeData(completeContent);
-        if(!verifyHead(receiceData))
-        {
-            qDebug() << "数据头不通过";
-            return;
-        }
-        else
-        {
-            if(!verifyTail(receiceData))
-            {
-                qDebug() << "数据尾不通过";
-                return;
-            }
-            else
-            {
-                if(!verifyParity(receiceData))
-                {
-                   qDebug() << "奇偶性不通过";
-                }
-                else//处理数据
-                {
-                    qDebug() << "操作数据表";
-                    QString temp_content;
-                    int tableType = receiceData.at(2).toInt(); //表的类型
+    dealSerialPort->start();
 
-                    switch(tableType)//注：存入数据库需要判断是否已经存在该条记录
-                    {
-                       case 2://AGV任务确认
-                         /******************************方法1：存入数据库*********************************/
-//                              myDatabase->insert_MySQL("",dataContent); //提取有用信息进行操作
-                        /*****************************方法2：存入Map***********************************/
-                              Map_affirmTask.insert(dataContent.at(1).toInt(),dataContent);
-                              break;
-                       case 4://AGV运行状态
-                        /******************************方法1：存入数据库*********************************/
-                              if(Set_agv.contains(dataContent.at(1).toInt()))
-                              {
-                                  QString content = ListToString(dataContent);
-                                  myDatabase->update_MySQL("agvRunStatus",content,dataContent.at(1).toInt());
-                              }
-                              else
-                              {
-                                  myDatabase->insert_MySQL("agvRunStatus",dataContent);
-                                  Set_agv.insert(dataContent.at(1).toInt());
-                              }
-                         /*****************************方法2：存入Map***********************************/
-                              Map_agvRunStatus.insert(dataContent.at(1).toInt(),dataContent); //自动替换已有的键对应的值
-                              dealComplete(dataContent);
+    dealSerialPort->wait();
+    delete  dealSerialPort;
 
-                              break;
-                       case 5://AGV进入请求
-                        /******************************方法1：存入数据库*********************************/
-//                              myDatabase->insert_MySQL("",dataContent); //提取有用信息进行操作
-                        /*****************************方法2：存入Map***********************************/
-                              Map_agvEnterRequest.insert(dataContent.at(1).toInt(),dataContent);
-                              break;
-                       case 8://其他设备运行状态
-                        /******************************方法1：存入数据库*********************************/
-//                              myDatabase->insert_MySQL("otherDeviceStatus",dataContent); //提取有用信息进行操作
-                        /*****************************方法2：存入Map***********************************/
-                              Map_otherDeviceStatus.insert(dataContent.at(1).toInt(),dataContent); //自动替换已有的键对应的值
-                              break;
-                       case 9://AGV位置反馈
-                              for(int i = 0;i < dataContent.size();i++)
-                              {
-                                  qDebug()<< "dataConetent" << dataContent.at(i);
-                              }
-                              temp_content = QString("AGVNo = %1,PosX = %2,PosY = %3").arg(dataContent.at(1)).arg(dataContent.at(2)).arg(dataContent.at(3));
-                              qDebug() << "9" << temp_content;
-                              myDatabase->update_MySQL("agvPosition",temp_content,dataContent.at(1).toInt());
-                              break;
-                       default:
-                              qDebug() << "不存该在类型表";
+    qDebug() << "返回BUFFER" << BUFFER;
 
-                    }
-
-                }
-            }
-
-        }
-    }
-
+//    mutex.unlock();
 }
 
 
@@ -304,23 +248,35 @@ void MySerialPort::closeEvent(QCloseEvent *)
 
 /****************************************************************处理数据************************************************************************************/
 //解析数据，不同数据之间以特殊符号间隔，比如“，”,一次最多接受8个字节，故区分接收次数
-void MySerialPort::analyzeData(QString content)
-{
-    receiceData.clear();
-    receiceData = content.split(",");
-    dataContent.clear();
-    for(int j = 2;j < tabAnddata.value(receiceData.at(2).toInt())-5+2;j++) //数据为链表
-    {
-//        qDebug() << tabAnddata.value(receiceData.at(2).toInt())-5 << "receiceData内容" << receiceData.at(j);
-        dataContent.append(receiceData.at(j));
-        qDebug() << "datacontent" << receiceData.at(j);
-    }
-    for(int i = 0;i < receiceData.size();i++)
-    {
-        qDebug() << "receiceData" << receiceData.at(i);
-    }
-}
+//void MySerialPort::analyzeData(QString content)
+//{
+//    receiceData.clear();
+//    receiceData = content.split(",");
+//    dataContent.clear();
+//    for(int j = 2;j < tabAnddata.value(receiceData.at(2).toInt())-5+2;j++) //数据为链表
+//    {
+////        qDebug() << tabAnddata.value(receiceData.at(2).toInt())-5 << "receiceData内容" << receiceData.at(j);
+//        dataContent.append(receiceData.at(j));
+//        qDebug() << "datacontent" << receiceData.at(j);
+//    }
+//    for(int i = 0;i < receiceData.size();i++)
+//    {
+//        qDebug() << "receiceData" << receiceData.at(i);
+//    }
+//}
 
+QList<QString> MySerialPort::analyseData(QList<QString> content)
+{
+    QList<QString> result;
+//    dataContent.clear();
+    for(int j = 2;j < tabAnddata.value(content.at(2).toInt())-5+2;j++) //数据为链表
+    {
+        result.append(content.at(j));
+        qDebug() << "解析到数据：" << content.at(j);
+    }
+    return  result;
+
+}
 
 
 bool MySerialPort::verifyHead(QList<QString> head)
@@ -397,16 +353,23 @@ QString MySerialPort::ListToString(QList<QString> info)
 //表3、表7为主动查询，格式一样
 void MySerialPort::writeData(QList<QString> content)
 {
+    QList<QString> test = content; //将content补充完整后奇偶校验
     int commandType = content.first().toInt();
     QString lsv_data;
+
+    test.prepend("0xFE");
+    test.prepend("0xFF");
+    test.append("0"); //先补一个校验位
+    test.append("0xFD");
+    test.append("0xFC");
     int liv_paritybit = 0;//得知数据位奇偶性,补充成寄校验
 //    qDebug() << "补充前" << verifyParity(content);
-    if(!verifyParity(content))
+    if(!verifyParity(test))
     {
         liv_paritybit = 1;
     }
 
-//    qDebug() << "补充后" << liv_paritybit;
+    qDebug() << "补充后" << liv_paritybit;
     switch(commandType)
     {
         case 3: case 7://0xFF,0xFE,指令，agv/设备编号，类型，奇偶校验，0xFD，0xFC
@@ -422,7 +385,14 @@ void MySerialPort::writeData(QList<QString> content)
                        .arg(content.at(3)).arg(content.at(4)).arg(content.at(5)).arg(content.at(6)).arg(content.at(7)).arg(content.at(8)).arg(liv_paritybit);
              break;
         case 9:
-             lsv_data = QString("0xFF,0xFE,%1,%2,%3,%4,%5,0xFD,0xFC").arg(content.at(0)).arg(content.at(1)).arg(content.at(2)).arg(content.at(3)).arg(liv_paritybit);
+             lsv_data = QString("0xFF,0xFE,%1,%2,%3,%4,%5,%6,0xFD,0xFC").arg(content.at(0)).arg(content.at(1)).arg(content.at(2)).arg(content.at(3)).arg(content.at(4)).arg(liv_paritybit);
+             break;
+        case 4:
+             lsv_data = QString("0xFF,0xFE,%1,%2,%3,%4,%5,%6,%7,%8,%9,%10,%11,%12,%13,%14,%15,%16,%17,%18,%19,%20,%21,0xFD,0xFC")
+                  .arg(content.at(0)).arg(content.at(1)).arg(content.at(2)).arg(content.at(3)).arg(content.at(4)).arg(content.at(5))
+                  .arg(content.at(6)).arg(content.at(7)).arg(content.at(8)).arg(content.at(9)).arg(content.at(10)).arg(content.at(11))
+                  .arg(content.at(12)).arg(content.at(13)).arg(content.at(14)).arg(content.at(15)).arg(content.at(16)).arg(content.at(17))
+                  .arg(content.at(18)).arg(content.at(19)).arg(liv_paritybit);
              break;
 
     }
@@ -435,57 +405,115 @@ void MySerialPort::writeData(QList<QString> content)
 /*
 表19：AGV编号、AGV类型、电量、运行状态、故障状态、任务状态、装卸异常、充电异常（from 'agvRunStatus'）
 */
-void MySerialPort::integrateAGVError(int AGVNo)
-{
-    Map_agvRunStatus.insert(4,{"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19"});
-    QList<QString> errorInfo;
-    QVector<int> index = {1,2,3,5,9,12,15,17}; //必须是顺序容器
-    QList<QString> agvRunStatusInfo = Map_agvRunStatus.find(AGVNo).value();
+//void MySerialPort::integrateAGVError(int AGVNo)
+//{
+//    Map_agvRunStatus.insert(4,{"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19"});
+//    QList<QString> errorInfo;
+//    QVector<int> index = {1,2,3,5,9,12,15,17}; //必须是顺序容器
+//    QList<QString> agvRunStatusInfo = Map_agvRunStatus.find(AGVNo).value();
 
-    for(int j:index)
-    {
-        errorInfo.append(agvRunStatusInfo.at(j));
-        qDebug() << "AGV编号、AGV类型、电量" <<agvRunStatusInfo.at(j);
-    }
+//    for(int j:index)
+//    {
+//        errorInfo.append(agvRunStatusInfo.at(j));
+//        qDebug() << "AGV编号、AGV类型、电量" <<agvRunStatusInfo.at(j);
+//    }
 
-    myDatabase->insert_MySQL("agvError",errorInfo);
+//    myDatabase->insert_MySQL("agvError",errorInfo);
 
-}
+//}
 
 /*
 表20：设备编号、设备类型、装卸动作号、装卸异常、充电动作号、充电异常（from 'otherDeviceStatus'）
 */
-void MySerialPort::integrateDeviceError(int DeviceNo)
-{
-    Map_otherDeviceStatus.insert(8,{"0","1","2","3","4","5","6"});
-    QList<QString> errorInfo;
-    QList<QString> deviceStatusInfo = Map_otherDeviceStatus.find(DeviceNo).value();
+//void MySerialPort::integrateDeviceError(int DeviceNo)
+//{
+//    Map_otherDeviceStatus.insert(8,{"0","1","2","3","4","5","6"});
+//    QList<QString> errorInfo;
+//    QList<QString> deviceStatusInfo = Map_otherDeviceStatus.find(DeviceNo).value();
 
-    for(int i = 1;i < 7 ;i++)
-    {
-        errorInfo.append(deviceStatusInfo.at(i));
-        qDebug() << "AGV编号、AGV类型、电量" <<deviceStatusInfo.at(i);
-    }
+//    for(int i = 1;i < 7 ;i++)
+//    {
+//        errorInfo.append(deviceStatusInfo.at(i));
+//        qDebug() << "AGV编号、AGV类型、电量" <<deviceStatusInfo.at(i);
+//    }
 
-//    myDatabase->insert_MySQL("otherDeviceError",errorInfo);
+////    myDatabase->insert_MySQL("otherDeviceError",errorInfo);
 
-}
+//}
 
 
 /********************************************************条件限制************************************************************/
 
-void MySerialPort::dealComplete(const QList<QString>& data)
-{
-    if(data[12].toInt() != 4) //任务未完成，不做处理
-    {
-        return;
-    }
+//void MySerialPort::dealComplete(const QList<QString>& data)
+//{
+//    if(data[12].toInt() != 4) //任务未完成，不做处理
+//    {
+//        return;
+//    }
 
-    if(myDatabase->select_recordNum("taskComplete") > 10) //记录达到上限，先删除最旧的后添加最新的记录
+//    if(myDatabase->select_recordNum("taskComplete") > 10) //记录达到上限，先删除最旧的后添加最新的记录
+//    {
+//        myDatabase->delete_limitRecords("taskComplete",1);
+//    }
+//     //写入已完成数据表,信息需整合
+//    QList<QString> content = myDatabase->select_MySQL("taskExecute",data[10].toInt());
+//    myDatabase->insert_MySQL("taskComplete",content);
+//}
+
+/*******************************************************处理粘包***********************************************************/
+//目标：0xFC0xFF分解为0xFC,0xFF
+QList<QString> MySerialPort::dealStickPackage(QList<QString>& splitContent)
+{
+    int count = 0;
+    int index1 = -1;
+    QList<QString> result = splitContent;
+    for(auto data : splitContent)
     {
-        myDatabase->delete_limitRecords("taskComplete",1);
+        if(data.size() == 8) //粘包————0xFC0xFF
+        {
+
+            index1 = splitContent.indexOf(data,index1+1);
+            qDebug() << "粘包：" << data << "出现处：" << index1;
+            result.replace(index1+count,data.mid(0,4)); //0xFC0XFF修改为0xFC
+            result.insert(index1+1+count,data.mid(4)); //添加0xFF
+            count++;
+        }
     }
-     //写入已完成数据表,信息需整合
-    QList<QString> content = myDatabase->select_MySQL("taskExecute",data[10].toInt());
-    myDatabase->insert_MySQL("taskComplete",content);
+    return result;
+
 }
+
+
+/*******************************************************打包帧***********************************************************/
+//目标：将所有帧按一帧分离
+QVector<QList<QString>> MySerialPort::packFrames(QList<QString>& bitAccount)
+{
+    QVector<QList<QString>> result;
+    int index2 = -1;
+    if(bitAccount.contains("0xFF") && bitAccount.contains("0xFC"))
+    {
+        int frameAccount = bitAccount.count("0xFC"); //帧数
+        QVector<int> indexTail;
+        for(int i = 0;i < frameAccount;i++) //保存所有0xFC的下标
+        {
+            index2 = bitAccount.indexOf("0xFC",index2+1);
+            indexTail.append(index2);
+        }
+
+        int start = 0;
+        for(int j = 0;j < frameAccount;j++) //获取每帧数据
+        {
+            QList<QString> tmpFrame;
+            for(int k = start;k <= indexTail.at(j);k++)
+            {
+                tmpFrame.append(bitAccount.at(k));
+            }
+            result.append(tmpFrame);
+            start = indexTail.at(j)+1; //更新起点
+
+        }
+    }
+    return result;
+}
+
+

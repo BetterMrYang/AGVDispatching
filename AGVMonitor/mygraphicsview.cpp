@@ -3,8 +3,13 @@
 #include <QDebug>
 MyGraphicsView::MyGraphicsView()
 {
-    this->installEventFilter(this);
-    realScaling = 1;
+//    this->installEventFilter(this);
+//    realScaling = 1;
+}
+
+MyGraphicsView::MyGraphicsView(QFrame* frame)
+{
+//    this->setParent(frame);
 }
 
 void MyGraphicsView::magnify()

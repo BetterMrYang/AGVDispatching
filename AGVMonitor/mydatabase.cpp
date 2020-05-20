@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QSqlError>
 #include <QMessageBox>
+#include <QThread>
 
 
 MyDatabase::MyDatabase()
@@ -12,10 +13,10 @@ MyDatabase::MyDatabase()
 
 void MyDatabase::createDefaultConnection()
 {
-    hostName = "127.0.0.1";   // 主机名
-    dbName = "agvdispatching";   // 数据库名称
-    userName = "Nuaa";   // 用户名
-    password = "17504";   // 密码
+//    hostName = "127.0.0.1";   // 主机名
+//    dbName = "agvdispatching";   // 数据库名称
+//    userName = "Nuaa";   // 用户名
+//    password = "17504";   // 密码
 
 //    dbconn = QSqlDatabase::addDatabase("QMYSQL",QString("%1").arg(connectName));
     dbconn = QSqlDatabase::addDatabase("QMYSQL");
@@ -30,41 +31,49 @@ void MyDatabase::createDefaultConnection()
     QSqlError error = dbconn.lastError();
     qDebug() << error.text();
     qDebug() << dbconn.tables();
+    qDebug() << "连接名————" << dbconn.connectionName();
+     qDebug()<<"MyDatabase::createConnection:"<<QThread::currentThreadId();
 }
 
 void MyDatabase::createConnection(QString name)
 {
-    hostName = "127.0.0.1";   // 主机名
-    dbName = "agvdispatching";   // 数据库名称
-    userName = "Nuaa";   // 用户名
-    password = "17504";   // 密码
+//    hostName = "127.0.0.1";   // 主机名
+//    dbName = "agvdispatching";   // 数据库名称
+//    userName = "Nuaa";   // 用户名
+//    password = "17504";   // 密码
 
 //    dbconn = QSqlDatabase::addDatabase("QMYSQL",QString("%1").arg(connectName));
-    dbconn = QSqlDatabase::addDatabase("QMYSQL",QString("%1").arg(name));
+    dbconn = QSqlDatabase::addDatabase("QMYSQL",name);
     dbconn.setHostName(hostName);
     dbconn.setDatabaseName(dbName);
     dbconn.setPort(3306);
     dbconn.setUserName(userName);
     dbconn.setPassword(password);
-    dbconn.open();
+    if(dbconn.open())
+    {
+        qDebug() << "连接名————" << dbconn.connectionName();
+        qDebug()<<"MyDatabase::createConnection:"<<QThread::currentThreadId();
+    }
 
     qDebug("database open status: %d\n", dbconn.open());
     QSqlError error = dbconn.lastError();
     qDebug() << error.text();
     qDebug() << dbconn.tables();
+
 //    dbconn.close();
 }
 
-void MyDatabase::closeConnection()
+void MyDatabase::closeConnection(QString name)
 {
-    qDebug() << "关闭数据库";
+//    qDebug() << "关闭数据库";
     dbconn.close();
+    QSqlDatabase::removeDatabase(name);
 }
 
 
 /*****************************************************数据库操作函数说明*************************************************************
  * MYSQL
- * 注：数据库所有表名称、字段采用英文命名、所有数据都采用字符串类型
+ * 注：数据库所有表名称、字段采用英文命名、所有数据都采用字符串类型,MYSQL中datetime类型需在QT预处理后写入
  *
  *
  *
@@ -73,7 +82,7 @@ tabName:
 ----------------------------------------------------------------------------------------------------------------------------------
      1."agvRunStatus":   AGV运行状态表(20)       指令类型，AGV编号,设备类型,电量,障碍物状态,运行状态，路径端号，工位点号，交叉点号，故障状态，任务生成编号，任务执行编号，任务状态，物料编号，
                                                 装卸动作编号，装卸异常，充电动作编号，充电异常，X坐标，Y坐标
-                                                               CommandType，AGVNo,DeviceType,AGVPower,AGVBarrierStatus,AGVRunningStatus,AGVRouteNo,AGVStationNo,AGVStationNo,AGVCrossNo,
+                                                               CommandType，AGVNo,DeviceType,AGVPower,AGVBarrierStatus,AGVRunningStatus,AGVRouteNo,AGVStationNo,AGVCrossNo,
                                                                AGVFaultStatus, TaskCreateNo, TaskExecuteNo, TaskStatus, MaterialNo,LoadActionNo, LoadError,ChargeActionNo,ChargeError，XPosition,YPosition
         指令类型: 4、AGV状态反馈
         AGV障碍物状态: 0无障碍，1远障碍，2近障碍，3碰撞
@@ -83,7 +92,7 @@ tabName:
         充电异常：1无异常，2充电异常
 ----------------------------------------------------------------------------------------------------------------------------------
 OK   2."otherDeviceStatus":   其他设备运行状态表(7)      字段：指令类型，设备编号，设备类型，装卸动作编号，装卸异常，充电动作编号，充电异常
-                                                             CommandType,DeviceNo,LoadActionNo,LoadError,ChargeActionNo,ChargeError
+                                                             CommandType,DeviceNo,DeviceType,LoadActionNo,LoadError,ChargeActionNo,ChargeError
      注：
         指令类型: 8、其他设备状态反馈
         装卸动作：1、AGV停止，2、装载开始，3、装载结束，4、卸载开始，5、卸载结束，6、AGV启动
@@ -187,11 +196,11 @@ OK  显示 15.otherDeviceError:其他设备异常（6）           字段：设�
             充电动作：1、AGV入站，2、AGV停止，3、充电桩接触，4、充电中，5、充电桩断开，6、AGV启动，7、AGV出站
             充电异常：1无异常，2充电异常
 ----------------------------------------------------------------------------------------------------------------------------------
-OK  16.agvPosition:AGV位置反馈（4）                   字段：指令编号，AGV编号，X坐标，Y坐标
-                                                          commandType,AGVNo,PosX,PosY
+OK  16.agvPosition:AGV位置反馈（5）                   字段：指令编号，AGV编号，X坐标，Y坐标,转弯状态
+                                                          commandType(9),AGVNo,PosX,PosY，TuringStatus
 
 ----------------------------------------------------------------------------------------------------------------------------------
-OK
+
 
 ----------------------------------------------------------------------------------------------------------------------------------
 OK
@@ -250,7 +259,7 @@ int MyDatabase::tabNameTotableNo(QString tabName)
 
 void MyDatabase::insert_MySQL(QString tabName,QList<QString> content)
 {
-    QSqlQuery query;
+    QSqlQuery query(dbconn);
     int liv_tableNo = tabNameTotableNo(tabName);
     switch(liv_tableNo)
     {
@@ -278,7 +287,7 @@ void MyDatabase::insert_MySQL(QString tabName,QList<QString> content)
               }
               query.clear();
               break;
-       case 3 : case 4 : case 5: case 16:
+       case 3 : case 4 : case 5:
                                 query.prepare(QString("insert into %1 values(?,?,?,?)").arg(tabName));
                                 for(int i = 0;i < 4;i++)
                                 {
@@ -286,7 +295,7 @@ void MyDatabase::insert_MySQL(QString tabName,QList<QString> content)
                                 }
                                 if(!query.exec())
                                 {
-                                   qDebug() << "routeStatus/crossPointStatus/stationStatus/agvPosition插入失败" << query.lastError();
+                                   qDebug() << "routeStatus/crossPointStatus/stationStatus插入失败" << query.lastError();
                                 }
                                 query.clear();
                                 break;
@@ -338,6 +347,18 @@ void MyDatabase::insert_MySQL(QString tabName,QList<QString> content)
              }
              query.clear();
              break;
+      case 16:
+             query.prepare(QString("insert into %1 values(?,?,?,?,?)").arg(tabName));
+             for(int i = 0;i < 5;i++)
+             {
+                 query.bindValue(i,content.at(i));
+             }
+             if(!query.exec())
+             {
+                 qDebug() << "agvPosition" << query.lastError();
+             }
+             query.clear();
+             break;
        default: //即11和14
                query.prepare(QString("insert into %1 values(?,?,?,?,?,?,?,?)").arg(tabName));
                for(int i = 0;i < 8;i++)
@@ -356,7 +377,7 @@ void MyDatabase::insert_MySQL(QString tabName,QList<QString> content)
 /****************************************************删除数据库记录*************************************************************/
 void MyDatabase::delete_MySQL(QString tabName, int pkey)
 {
-    QSqlQuery query;
+    QSqlQuery query(dbconn);
     int liv_tableNo = tabNameTotableNo(tabName);
     switch(liv_tableNo)
     {
@@ -416,9 +437,11 @@ void MyDatabase::delete_MySQL(QString tabName, int pkey)
 }
 
 /****************************************************修改数据库记录*******************************************************************/
+//更新部分字段
 void MyDatabase::update_MySQL(QString tabName,QString content,int pkey)
 {
-    QSqlQuery query;
+    qDebug()<<"MyDatabase::update_MySQL:"<<QThread::currentThreadId();
+    QSqlQuery query(dbconn);
     int liv_tableNo = tabNameTotableNo(tabName);
     switch(liv_tableNo)
     {
@@ -476,11 +499,59 @@ void MyDatabase::update_MySQL(QString tabName,QString content,int pkey)
 
 }
 
+//更新一条记录
+//对于已完成任务和已调度任务，只保留最近N条，故不能删除重新插入；其余表格以删除重新插入方式更新——————效率？？
+void MyDatabase::update_record(QString tabName,QList<QString>& content,int pkey)
+{
+    QSqlQuery query(dbconn);
+    int liv_tableNo = tabNameTotableNo(tabName);
+    switch(liv_tableNo)
+    {
+        case 12:  //datetime类型需处理
+                if(!query.exec(QString("update %1 set TaskCreateNo = %2,TaskType = %3,StartStationNo = %4,StartTransferMode = %5, MaterialNo = %6, EndStationNo = %7,"
+                                       "EndTransferMode = %8,TaskCreateTime = %9,TaskExecuteNo = %10, ExecuteAGVNo = %11,TaskStatus = %12,TaskTimePredict = %13 where TaskCreateNo = %14")
+                                       .arg(tabName).arg(content.at(0)).arg(content.at(1)).arg(content.at(2)).arg(content.at(3)).arg(content.at(4)).arg(content.at(5)).arg(content.at(6))
+                                       .arg(content.at(7)).arg(content.at(8)).arg(content.at(9)).arg(content.at(10)).arg(content.at(11)).arg(content.at(12)).arg(content.at(13)).arg(pkey)))
+                 {
+                     qDebug() << QString("update %1  where TaskCreateNo = %2 失败").arg(tabName).arg(pkey) << query.lastError();
+                 }
+                 query.clear();
+                 break;
+        case 13: //datetime类型需处理
+                if(!query.exec(QString("update %1 set TaskCreateNo = %2,TaskType = %3,TaskExecuteNo = %4,ExecuteAGVNo = %5,TaskStatus = %6, MaterialNo = %7, RouteNo = %8,"
+                               "RoutePointNo = %9,StationNo = %10,LoadActionNo = %11, LoadError = %12,ChargeActionNo = %13,TaskExecuteTime = %14，TaskDistance = %15，"
+                               "TaskRemainTime = %16 where TaskCreateNo = %17").arg(tabName).arg(content.at(0)).arg(content.at(1)).arg(content.at(2)).arg(content.at(3))
+                               .arg(content.at(4)).arg(content.at(5)).arg(content.at(6)).arg(content.at(7)).arg(content.at(8)).arg(content.at(9)).arg(content.at(10))
+                               .arg(content.at(11)).arg(content.at(12)).arg(content.at(13)).arg(content.at(14)).arg(pkey)))
+                {
+                    qDebug() << QString("update %1  where TaskCreateNo = %2 失败").arg(tabName).arg(pkey) << query.lastError();
+                }
+                query.clear();
+                break;
+        default:
+                delete_MySQL(tabName,pkey);
+                insert_MySQL(tabName,content);
+//              if(!query.exec(QString("update %1 set CommandType = %2，AGVNo = %3,DeviceType = %4,AGVPower = %5,AGVBarrierStatus = %6,AGVRunningStatus = %7,"
+//                                     "AGVRouteNo = %8,AGVStationNo = %9,AGVCrossNo = %10,AGVFaultStatus = %11,TaskCreateNo = %12,TaskExecuteNo = %13,"
+//                                     "TaskStatus = %14,MaterialNo = %15,LoadActionNo = %16,LoadError = %17,ChargeActionNo = %18,ChargeError = %19，"
+//                                     "XPosition = %20,YPosition = %21 where AGVNo = %22").arg(tabName).arg(content.at(0)).arg(content.at(1)).arg(content.at(2))
+//                                     .arg(content.at(3)).arg(content.at(4)).arg(content.at(5)).arg(content.at(6)).arg(content.at(7)).arg(content.at(8)).arg(content.at(9))
+//                                     .arg(content.at(10)).arg(content.at(11)).arg(content.at(12)).arg(content.at(13)).arg(content.at(14)).arg(content.at(15))
+//                                     .arg(content.at(16)).arg(content.at(17)).arg(content.at(18)).arg(content.at(19)).arg(pkey)))
+//              {
+//                  qDebug() << QString("update %1 set %2 where AGVNo = %3 失败").arg(tabName).arg(content.at(0)).arg(pkey) << query.lastError();
+//              }
+//              query.clear();
+
+
+    }
+}
+
 /*****************************************************************查询数据库(只查询需要显示的)****************************************************************/
 QList<QString> MyDatabase::select_MySQL(QString tabName,int pkey)
 {
    QList<QString> select_data;
-   QSqlQuery query;
+   QSqlQuery query(dbconn);
    int liv_tableNo = tabNameTotableNo(tabName);
    switch(liv_tableNo)
    {
@@ -690,7 +761,7 @@ QList<QString> MyDatabase::select_MySQL(QString tabName,int pkey)
              {
                  qDebug() << "未获取下哟个字段";
              }
-             for(int i = 0;i < 4;i++)
+             for(int i = 0;i < 5;i++)
              {
                  select_data.append(query.value(i).toString());
              }
@@ -703,7 +774,7 @@ QList<QString> MyDatabase::select_MySQL(QString tabName,int pkey)
 /*****************************************************************查询表记录数(只查询需要的)****************************************************************/
 int MyDatabase::select_recordNum(QString tabName)
 {
-    QSqlQuery query;
+    QSqlQuery query(dbconn);
     if(! query.exec(QString("select * from %1").arg(tabName)))
     {
        qDebug() << QString("select * from %1").arg(tabName) << query.lastError();
@@ -718,7 +789,7 @@ int MyDatabase::select_recordNum(QString tabName)
 /*****************************************************************删除表前n条记录****************************************************************/
 void MyDatabase::delete_limitRecords(QString tabName,int num)
 {
-    QSqlQuery query;
+    QSqlQuery query(dbconn);
     if(! query.exec(QString("delete from %1 limit %2").arg(tabName).arg(num)))
     {
        qDebug() << QString("delete from %1 limit %2").arg(tabName).arg(num) << query.lastError();

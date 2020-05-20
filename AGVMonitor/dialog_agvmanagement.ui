@@ -148,7 +148,7 @@
       </item>
      </layout>
     </widget>
-    <widget class="QPushButton" name="Btn_add_2">
+    <widget class="QPushButton" name="Btn_del">
      <property name="geometry">
       <rect>
        <x>150</x>
@@ -161,7 +161,7 @@
       <string>删除</string>
      </property>
     </widget>
-    <widget class="QPushButton" name="Btn_add_3">
+    <widget class="QPushButton" name="Btn_close">
      <property name="geometry">
       <rect>
        <x>250</x>

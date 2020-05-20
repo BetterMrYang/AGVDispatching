@@ -69,7 +69,37 @@ void Dialog_agvManagement::slot_appearTypeChange()
     }
 }
 
-void Dialog_agvManagement::on_Btn_add_3_clicked()
+void Dialog_agvManagement::on_Btn_del_clicked()
+{
+    QString lsv_AGVNo = ui->LineEdit_agvNo->text();
+    if(lsv_AGVNo.isEmpty())
+    {
+        QMessageBox::warning(this,tr("警告："),tr("AGV编号不能为空"));
+    }
+    emit deleteAGVNo(lsv_AGVNo.toInt());
+    this->close();
+
+}
+
+
+void Dialog_agvManagement::on_Btn_close_clicked()
 {
     this->close();
 }
+
+/************************************************************对外接口*******************************************************************/
+AGVTYPE Dialog_agvManagement::getAGVType()
+{
+    return agvType;
+}
+
+APPEARTYPE Dialog_agvManagement::getAppearType()
+{
+    return appearType;
+}
+
+bool Dialog_agvManagement::getFlag_addAGV()
+{
+    return flag_addAGV;
+}
+

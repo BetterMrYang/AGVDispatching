@@ -1,6 +1,8 @@
 #include "agvmonitor.h"
 #include "ui_agvmonitor.h"
 #include "mygraphicsview.h"
+#include "Traffic/mydijkstra.h"
+#include "include.h"
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDomDocument>
@@ -8,9 +10,14 @@
 #include <QDebug>
 #include <QInputDialog>
 #include <QSqlError>
+#include <synchapi.h>
+
+
 int AGVACCOUNT = 0; //目前设置最多12
-QVector<int> ENABLE = {1,1,1,1,1,1,1,1,1,1,1,1};
+QVector<int> ENABLE = {0,0,0,0,0,0,0,0,0,0,0,0};
 int MATERIALACCOUNT = 7;
+
+QSemaphore WRAGV(1);
 
 AGVMonitor::AGVMonitor(QWidget *parent) :
     QMainWindow(parent),
@@ -18,17 +25,19 @@ AGVMonitor::AGVMonitor(QWidget *parent) :
 {
     ui->setupUi(this);
     m_myScene = new QGraphicsScene(this);
-    m_myScene->setSceneRect(0,0,960,540);
-    m_myView = new MyGraphicsView;
-    m_myView->setObjectName(QStringLiteral("myView"));
-    m_myView->setGeometry(QRect(460,80, 891, 431));
-    m_myView->setScene(m_myScene);
-    m_myView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    m_myView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    m_myView->centerOn(0,0);//滚动条出现在开头
-    m_myView->setRenderHint(QPainter::Antialiasing,true); //反走样
-    m_myView->setParent(this);
-    m_myView->installEventFilter(this);
+//    m_myScene->setSceneRect(0,0,960,540);
+    m_myScene->setSceneRect(0,0,3840,2160);
+
+//    ui->graphicsView->setGeometry(QRect(460,80, 891, 411));
+////    ui->graphicsView->move(460,60);
+    ui->graphicsView->setScene(m_myScene);
+////    ui->graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+////    ui->graphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    ui->graphicsView->centerOn(0,0);//滚动条出现在开头
+    ui->graphicsView->setRenderHint(QPainter::Antialiasing,true); //反走样
+//    ui->graphicsView->setParent(this);
+    ui->graphicsView->installEventFilter(this);
+
 
 //    AGVNUM =  QInputDialog::getInt(this,tr("提示："),tr("请输入AGV数目"),1,1,12,1);
 //    MATERIALNUM =  QInputDialog::getInt(this,tr("提示："),tr("请输入物料数目"),1,1,999,1);
@@ -36,18 +45,21 @@ AGVMonitor::AGVMonitor(QWidget *parent) :
     timer_display = new QTimer(this);
     timer_record = new QTimer(this);
     timer_agvPos = new QTimer(this);
+    timer_twinkle = new QTimer(this);
 
     timer_flushCall = new QTimer(this);
 //    timer_flushCall->start(500);
 
     Btn_test = new QPushButton(this);
     Btn_test->setText("测试");
-    Btn_test->move(1200,50);
+    Btn_test->move(1200,0);
 
     createConnection();
     m_myDatabase = new MyDatabase();
     m_myDatabase->createDefaultConnection();
     createModel();
+
+
 
 }
 
@@ -57,8 +69,46 @@ AGVMonitor::~AGVMonitor()
     delete  m_myDatabase;
 }
 
+void AGVMonitor::slot_test()
+{
+    m_mySerialPort->writeData({"9","1111",QString("%1").arg(100*slider),"120","0"});
+    m_mySerialPort->writeData({"9","2222",QString("%1").arg(100*slider),"320","0"});
+//    m_mySerialPort->writeData({"9","2222",QString("%1").arg(100*slider),"320",QString("%1").arg(slider%2)});
+    slider++;
+}
+
 void AGVMonitor::slot_Btn_test()
 {
+    /*****************测试Dijkstra****************/
+//    QList<DijkstraInfo> info;
+//    DijkstraInfo a = {0,5,100};
+//    info.append(a);
+//    DijkstraInfo b = {0,4,30};
+//    info.append(b);
+//    DijkstraInfo c = {0,2,10};
+//    info.append(c);
+//    DijkstraInfo d = {1,2,5};
+//    info.append(d);
+//    DijkstraInfo e = {2,3,50};
+//    info.append(e);
+//    DijkstraInfo f = {3,5,10};
+//    info.append(f);
+//    DijkstraInfo g = {4,3,20};
+//    info.append(g);
+//    DijkstraInfo h = {4,5,60};
+//    info.append(h);
+
+//    myDijkstra dijkstra(this,6,8);
+//    dijkstra.getNewRoute(0,3,info);
+
+    /*****************测试showPath****************/
+//    showPath("0,1,2,3");
+
+    /*****************测试getIntialPath*************************/
+    qDebug() << "getInitialPath" << getInitialPath(0,5);
+
+
+//    qDebug() << readFile("test.txt");
 //    /***************************数据库测试****************************/
 //    m_myDatabase->insert_MySQL("crossPointStatus",{"3","2","0","1"});
 //    m_myDatabase->update_MySQL("crossPointStatus","CrossStatus = 3",3);
@@ -79,8 +129,29 @@ void AGVMonitor::slot_Btn_test()
 //    Model_agvStatics->select();
 //    Model_materialStatus->select();
 //      count++;
+
+//    for(int i = 0;i < m_list_agvInfo.size();i++)
+//    {
+//         qDebug() << m_list_agvInfo.at(i).agvNo << m_list_agvInfo.at(i).PosX << m_list_agvInfo.at(i).PosY;
+//    }
+
+//    QTimer *timer = new QTimer(this); //模拟AGV自动反馈位置
+//    connect(timer,SIGNAL(timeout()),this,SLOT(slot_test()));
+//    timer->start(1000);
+
+//    twinkleAGV(1111);
+//    twinkleAGV(2222);
+//    stopTwinkle(1111);
+//    stopTwinkle(2222);
+
+//    for(int i = 0;i < 5;i++)
+//    {
+
+//        m_mySerialPort->writeData({"9","1111",QString("%1").arg(100*i),"120"});
+////        m_mySerialPort->writeData({"4","2222","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20"});
+//    }
 //    m_mySerialPort->writeData({"9","1111","120","120"});
-//      m_mySerialPort->writeData({"4","2222","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19"});
+//      m_mySerialPort->writeData({"4","2222","333","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20"});
 //    m_mySerialPort->integrateAGVError(4);
 //    m_mySerialPort->integrateDeviceError(8);
 
@@ -97,6 +168,9 @@ void AGVMonitor::initStyle()
     RoutePen.setColor(Qt::green);
     ArrowPen.setWidth(2);
     ArrowPen.setColor(Qt::black);
+    PathPen.setStyle(Qt::DashLine);
+    PathPen.setWidth(2);
+    PathPen.setColor(Qt::darkGray);
     PointBrush.setColor(Qt::blue);
     PointBrush.setStyle(Qt::SolidPattern);
     StationBrush.setColor(Qt::red);
@@ -384,6 +458,7 @@ void AGVMonitor::createConnection()
     connect(timer_record,SIGNAL(timeout()),this,SLOT(slot_timer_record()));
     connect(timer_agvPos,SIGNAL(timeout()),this,SLOT(slot_timer_agvPos()));
     connect(timer_flushCall,SIGNAL(timeout()),this,SLOT(slot_timer_flushCall()));
+    connect(timer_twinkle,SIGNAL(timeout()),this,SLOT(slot_timer_twinkle()));
     connect(ui->Menubar_agvAccount,SIGNAL(triggered()),this,SLOT(slot_agvAccount()));
     connect(ui->Menubar_agvSettings,SIGNAL(triggered()),this,SLOT(slot_agvSettings()));
 }
@@ -391,7 +466,7 @@ void AGVMonitor::createConnection()
 bool AGVMonitor::eventFilter(QObject *obj,QEvent *event)
 {
 //    Q_UNUSED(event);
-    if(obj == m_myView)
+    if(obj == ui->graphicsView)
     {
         if(event->type() == QEvent::Leave)
         {
@@ -407,8 +482,34 @@ bool AGVMonitor::eventFilter(QObject *obj,QEvent *event)
     return false;
 }
 
-void AGVMonitor::mapOffset(QList<QPointF> totalPoints)
+QList<QPointF> AGVMonitor::readFile(QString fileName)
 {
+//    QString linestr;
+    QList<QPointF> strlist;
+    QFile file(fileName);
+    if(!file.open(QIODevice::ReadOnly|QIODevice::Text))
+    {
+         qDebug()<<file.errorString()<<fileName<<"  open failed!";
+    }
+    QTextStream stream(&file);
+
+    while(!stream.atEnd())
+    {
+         QString linestr(stream.readLine()); //按行读取
+         QList<QString> lineList(linestr.split(","));
+         QPointF pos(lineList.at(0).toDouble(),lineList.at(1).toDouble());
+         strlist.append(pos);//追加到字符串列表
+
+    }
+    stream.flush();
+    file.close();
+    return strlist;
+}
+
+
+void AGVMonitor::mapOffset(QString fileName)
+{
+    QList<QPointF> totalPoints = readFile(fileName);
     //保存极值点，X最大、X最小、Y最大、Y最小,假设形状和电子地图一样，故只需一个点进行映射（左上角的点与基准点映射）
     QVector<double> extremePoint = {totalPoints.at(0).x(),totalPoints.at(0).y(),totalPoints.at(0).x(),totalPoints.at(0).y()};
     for(int i = 1;i < totalPoints.size();i++)
@@ -419,16 +520,16 @@ void AGVMonitor::mapOffset(QList<QPointF> totalPoints)
         }
         else if(totalPoints.at(i).x() < extremePoint.at(1)) //X最小
         {
-            extremePoint.replace(0,totalPoints.at(i).x());
+            extremePoint.replace(1,totalPoints.at(i).x());
         }
 
         if(totalPoints.at(i).x() > extremePoint.at(2)) //Y最大
         {
-            extremePoint.replace(0,totalPoints.at(i).y());
+            extremePoint.replace(2,totalPoints.at(i).y());
         }
         else if(totalPoints.at(i).x() < extremePoint.at(3))//Y最小
         {
-            extremePoint.replace(0,totalPoints.at(i).y());
+            extremePoint.replace(3,totalPoints.at(i).y());
         }
     }
     double MapTopLeftX = m_list_routePoint.at(0).pos_x; //电子地图模块参考点X
@@ -528,6 +629,9 @@ void AGVMonitor::slot_importMap()
         PointItem->setBrush(PointBrush);
         PointItem->setFlag(QGraphicsItem::ItemIsSelectable);
         PointItem->setToolTip(tr("point,%1").arg(a));
+
+        //备注
+        drawRemark(routepoint.topLeft(),PointItem,"point",a);
         m_myScene->addItem(PointItem);
     }
     //路径
@@ -576,6 +680,10 @@ void AGVMonitor::slot_importMap()
         stationitem->setBrush(StationBrush);
         stationitem->setFlag(QGraphicsItem::ItemIsSelectable);
         stationitem->setToolTip(tr("station,%1").arg(c));
+
+        //备注
+        drawRemark(station_Rect.topLeft(),stationitem,"station",c);
+
         m_myScene->addItem(stationitem);
 
         //追加至链表
@@ -585,7 +693,58 @@ void AGVMonitor::slot_importMap()
     }
     qDebug() << m_myScene->items(Qt::DescendingOrder).size();
 
+    //获取距离表和路由表
+    int count_distance = root.firstChildElement("距离表").childNodes().size();
+    QDomNodeList xml_distance = root.firstChildElement("距离表").childNodes();
+    for(int z = 0;z < count_distance;z++)
+    {
+        QString value = xml_distance.at(z).toElement().attributeNode("Content").value();
+        m_list_distance.append(value);
+    }
+    qDebug() << "距离表" << m_list_distance;
+    int count_floyd = root.firstChildElement("路由表").childNodes().size();
+    QDomNodeList xml_floyd = root.firstChildElement("路由表").childNodes();
+    for(int z = 0;z < count_floyd;z++)
+    {
+        QString value = xml_floyd.at(z).toElement().attributeNode("Content").value();
+        m_list_floyd.append(value);
+    }
+    qDebug() << "路由表" << m_list_floyd;
+
+
 }
+
+void AGVMonitor::drawRemark(QPointF point,QGraphicsItem* parent,QString type,int RFID)
+{
+        QGraphicsSimpleTextItem *Item = new QGraphicsSimpleTextItem;
+        QPen pen(Qt::darkCyan);
+        Item->setPen(pen);
+        Item->setParentItem(parent);
+
+
+        if(type == "point")
+        {
+            Item->setText(QString("%1").arg(RFID));
+//            Item->setToolTip(tr("remark,%1").arg(No));
+            Item->setPos(point+QPointF(-20,-18));
+        }
+        else if(type == "station")
+        {
+            Item->setText(QString("%1").arg(RFID));
+//            Item->setToolTip(tr("station_remark,%1").arg(No));
+            Item->setPos(point+QPointF(9,12));
+        }
+        else
+        {
+            qDebug() << "drawRemark失败";
+            return;
+        }
+
+}
+
+
+
+
 
 void AGVMonitor::slot_serialPort()
 {
@@ -593,11 +752,11 @@ void AGVMonitor::slot_serialPort()
     {
 //       qDebug() << "";
        m_mySerialPort = new MySerialPort(this);
-       if(count_serialPort == 0)
-       {
-           m_mySerialPort->myDatabase = m_myDatabase;
-           count_serialPort = 1;
-       }
+//       if(count_serialPort == 0)
+//       {
+////           m_mySerialPort->myDatabase = m_myDatabase;
+//           count_serialPort = 1;
+//       }
 
        serialPortStatus = 1;
     }
@@ -677,6 +836,7 @@ void AGVMonitor::slot_timer_record()
 
 void AGVMonitor::slot_timer_agvPos()
 {
+    qDebug() << "刷新AGV位置" << "AGVACCOUNT" << AGVACCOUNT;
     if(AGVACCOUNT == 0)
     {
         if(timer_agvPos->isActive())
@@ -686,24 +846,47 @@ void AGVMonitor::slot_timer_agvPos()
         return;
     }
     //获取场景上所有AGV
-    QList<QGraphicsItem*> total_items = m_myScene->items(Qt::DescendingOrder);
-    QList<QGraphicsItem*> total_agvs;
-    for(int i = 0;i < total_items.size();i++)
-    {
-        if(total_items.at(i)->toolTip().split(",").first() == "agv")
-        {
-            total_agvs.append(total_items.at(i));
-        }
-    }
+//    QList<QGraphicsItem*> total_items = m_myScene->items(Qt::DescendingOrder);
+//    QList<QGraphicsItem*> total_agvs;
+//    for(int i = 0;i < total_items.size();i++)
+//    {
+//        if(total_items.at(i)->toolTip().split(",").first() == "agv")
+//        {
+//            total_agvs.append(total_items.at(i));
+//        }
+//    }
     for(int j = 0;j < AGVACCOUNT;j++)
     {
         int agvNo = m_list_agvInfo.at(j).agvNo;
+        QGraphicsItem* item = searchAGV(agvNo);
 
         QList<QString> carInfo = m_myDatabase->select_MySQL("agvPosition",agvNo);
         m_list_agvInfo[j].agvNo = carInfo.at(1).toInt();
         m_list_agvInfo[j].PosX = carInfo.at(2).toDouble();
         m_list_agvInfo[j].PosY = carInfo.at(3).toDouble();
-        total_agvs.at(j)->setPos(QPointF(m_list_agvInfo[j].PosX,m_list_agvInfo[j].PosY));
+        //判断是否在转弯
+        if(carInfo.last().toInt()) //正在转弯
+        {
+            qDebug() << "正在转弯";
+            if(!m_list_agvInfo[j].twinkleStatus) //刚进入弯道，即上个状态twinkleStatus = 0；
+            {
+                twinkleAGV(carInfo.at(1).toInt());
+                m_list_agvInfo[j].twinkleStatus = 1;
+
+            }
+
+        }
+        else  //直线行驶
+        {
+            qDebug() << "直线行驶";
+            if(m_list_agvInfo[j].twinkleStatus) //刚驶出弯道，即上个状态twinkleStatus = 1；
+            {
+                m_list_agvInfo[j].twinkleStatus = 0;
+                stopTwinkle(m_list_agvInfo[j].agvNo);
+            }
+            item->setPos(QPointF(m_list_agvInfo[j].PosX-offsetX,m_list_agvInfo[j].PosY-offsetY)); //更新位置需映射到地图上
+        }
+
         m_myScene->update(); //不刷新就不动
     }
 
@@ -726,8 +909,10 @@ void AGVMonitor::slot_agvAccount()
     qDebug() << "agv数量管理";
     Dialog_agvManagement *dialog_agvManagement = new Dialog_agvManagement;
     dialog_agvManagement->ui->Stack_agvManagement->setCurrentIndex(0);
+    //接收删除agv信号
+    connect(dialog_agvManagement,SIGNAL(deleteAGVNo(int)),this,SLOT(slot_deleteAGVNo(int)));
     dialog_agvManagement->exec();
-    if(dialog_agvManagement->flag_addAGV)
+    if(dialog_agvManagement->getFlag_addAGV())
     {
 //        //AGV图标
         int agvNo = dialog_agvManagement->ui->LineEdit_agvNo->text().toInt();
@@ -736,11 +921,11 @@ void AGVMonitor::slot_agvAccount()
         AGVShape.setTopRight(QPoint(15,10));
         QGraphicsRectItem *agvItem = new QGraphicsRectItem(AGVShape);
         agvItem->setToolTip(QString("agv,%1").arg(agvNo));
-        if(dialog_agvManagement->agvType == lift)
+        if(dialog_agvManagement->getAGVType() == lift)
         {
             agvItem->setBrush(LiftAgvBrush);
         }
-        else if(dialog_agvManagement->agvType == pull)
+        else if(dialog_agvManagement->getAGVType() == pull)
         {
             agvItem->setBrush(PullAgvBrush);
         }
@@ -760,7 +945,7 @@ void AGVMonitor::slot_agvAccount()
         //将信息存入链表
         AGVInfo agvCar;
         agvCar.agvNo = agvNo;
-        if(dialog_agvManagement->appearType == position) //指定位置型
+        if(dialog_agvManagement->getAppearType() == position) //指定位置型
         {
             agvCar.PosX = dialog_agvManagement->ui->LineEdit_appearX->text().toDouble();
             agvCar.PosY = dialog_agvManagement->ui->LineEdit_appearY->text().toDouble();
@@ -793,7 +978,9 @@ void AGVMonitor::slot_agvAccount()
 
         //内容插入数据库
         qDebug() << "插入数据库";
-        m_myDatabase->insert_MySQL("agvPosition",{"9",QString("%1").arg(agvCar.agvNo),QString("%1").arg(agvCar.PosX),QString("%1").arg(agvCar.PosY)});
+        m_myDatabase->insert_MySQL("agvPosition",{"9",QString("%1").arg(agvCar.agvNo),QString("%1").arg(agvCar.PosX),QString("%1").arg(agvCar.PosY),"0"});
+
+        ui->CBX_AGVNo->addItem(QString("%1").arg(agvCar.agvNo));
 
         //开启刷新AGV位置的定时器
         if(AGVACCOUNT == 1)
@@ -801,10 +988,33 @@ void AGVMonitor::slot_agvAccount()
            timer_agvPos->start(125);
            timer_flushCall->start(500);
         }
-
-
     }
+
     
+}
+
+void AGVMonitor::slot_deleteAGVNo(int AGVNo)
+{
+    qDebug() << "slot_deleteAGVNo";
+    for(int i = 0;i < m_list_agvInfo.size();i++)
+    {
+        if(m_list_agvInfo.at(i).agvNo == AGVNo)
+        {
+            m_myDatabase->delete_MySQL("agvPosition",AGVNo); //删除数据库中有关的,多张表,此处不全
+            m_list_agvInfo.removeAt(i); //链表中删除相关的
+
+            WRAGV.acquire(1);
+            AGVACCOUNT--;
+            ENABLE[AGVACCOUNT] = 0; //对应位置0
+            WRAGV.release(1);
+            m_myScene->removeItem(searchAGV(AGVNo)); //地图中删除
+            break;
+        }
+    }
+    if(twinkle_no.contains(AGVNo)) //闪烁AGV中删除相关的
+    {
+        twinkle_no.removeOne(AGVNo);
+    }
 }
 
 void AGVMonitor::slot_agvSettings()
@@ -814,11 +1024,13 @@ void AGVMonitor::slot_agvSettings()
 
 void AGVMonitor::slot_timer_flushCall()
 {
+    qDebug() << "slot_timer_flushCall";
     //AGV使能
-    for(int i = AGVACCOUNT;i < 12;i++)
-    {
-        ENABLE[i] = 0;
-    }
+//    for(int i = AGVACCOUNT;i < 12;i++)
+//    {
+//        ENABLE[i] = 0;
+//    }
+    WRAGV.acquire(1); //是否会导致对ENABLE和AGVACCOUNT操作的阻塞
     ui->Label_call1->setVisible(ENABLE[0]);
     if(ENABLE[0])
     {
@@ -827,57 +1039,57 @@ void AGVMonitor::slot_timer_flushCall()
     ui->Label_call2->setVisible(ENABLE[1]);
     if(ENABLE[1])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call2->setText(QString("%1").arg(m_list_agvInfo.at(1).agvNo));
     }
     ui->Label_call3->setVisible(ENABLE[2]);
     if(ENABLE[2])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call3->setText(QString("%1").arg(m_list_agvInfo.at(2).agvNo));
     }
     ui->Label_call4->setVisible(ENABLE[3]);
     if(ENABLE[3])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call4->setText(QString("%1").arg(m_list_agvInfo.at(3).agvNo));
     }
     ui->Label_call5->setVisible(ENABLE[4]);
     if(ENABLE[4])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call5->setText(QString("%1").arg(m_list_agvInfo.at(4).agvNo));
     }
     ui->Label_call6->setVisible(ENABLE[5]);
     if(ENABLE[5])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call6->setText(QString("%1").arg(m_list_agvInfo.at(5).agvNo));
     }
     ui->Label_call7->setVisible(ENABLE[6]);
     if(ENABLE[6])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call7->setText(QString("%1").arg(m_list_agvInfo.at(6).agvNo));
     }
     ui->Label_call8->setVisible(ENABLE[7]);
     if(ENABLE[7])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call8->setText(QString("%1").arg(m_list_agvInfo.at(7).agvNo));
     }
     ui->Label_call9->setVisible(ENABLE[8]);
     if(ENABLE[8])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call9->setText(QString("%1").arg(m_list_agvInfo.at(8).agvNo));
     }
     ui->Label_call10->setVisible(ENABLE[9]);
     if(ENABLE[9])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call10->setText(QString("%1").arg(m_list_agvInfo.at(9).agvNo));
     }
     ui->Label_call11->setVisible(ENABLE[10]);
     if(ENABLE[10])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call11->setText(QString("%1").arg(m_list_agvInfo.at(10).agvNo));
     }
     ui->Label_call12->setVisible(ENABLE[11]);
     if(ENABLE[11])
     {
-        ui->Label_call1->setText(QString("%1").arg(m_list_agvInfo.at(0).agvNo));
+        ui->Label_call12->setText(QString("%1").arg(m_list_agvInfo.at(11).agvNo));
     }
 
 
@@ -888,6 +1100,7 @@ void AGVMonitor::slot_timer_flushCall()
            timer_flushCall->stop();
         }
     }
+    WRAGV.release(1);
 }
 /***************************************************************************槽函数*******************************************************************************/
 /***************************************************************************************************************************************************************/
@@ -935,8 +1148,217 @@ QVector<int> AGVMonitor::getXmlValueList(const QDomNode &node,QString type)
 
 
 /****************************************************************************路网监控****************************************************************************/
-//
 void AGVMonitor::updateRoad(QString type,int number)
 {
 
+}
+
+/*!
+ * @brief 整合floyd生成路径
+ * @fun getInitialPath
+ * @param start、end——起点终点
+ * @return 经过的路径点，形如“1,2,3,4”
+*/
+QString AGVMonitor::getInitialPath(int start,int end)
+{
+    QString lsv_path(QString::number(start)+",");
+    int row = start,col = end;
+    if(m_list_floyd.at(row).split(",").at(col).toInt() == end) //直达
+    {
+        lsv_path += QString::number(end);
+    }
+    else
+    {
+        while(m_list_floyd.at(row).split(",").at(col).toInt() != end)
+        {
+            int col_value = m_list_floyd.at(row).split(",").at(col).toInt();
+            lsv_path += QString::number(col_value) + ",";
+            row = col_value;
+            qDebug() << "row" << row;
+        }
+        lsv_path += QString::number(end);
+    }
+    return lsv_path;
+}
+
+/*!
+ * @brief 路径预览
+ * @fun showPath
+ * @param path 经过的路径点，形如“1,2,3,4”
+ * @return QGraphicsItemGroup*——路径组
+ * @remark 手动删除组——destroyItemGroup()
+*/
+QGraphicsItemGroup* AGVMonitor::showPath(const QString& path)
+{
+    QGraphicsItemGroup* itemGroup = new QGraphicsItemGroup;
+    QList<QString> PathPoint = path.split(",");
+    for(auto point : PathPoint)
+    {
+        int liv_no = point.toInt();
+        QLineF LineItem;
+        LineItem.setP1(m_list_route.at(liv_no).start_pos);
+        LineItem.setP2(m_list_route.at(liv_no).end_pos);
+        QGraphicsLineItem *item=new QGraphicsLineItem(LineItem);
+        item->setPen(PathPen);
+        m_myScene->addItem(item);
+        itemGroup->addToGroup(item);
+    }
+    m_myScene->addItem(itemGroup);
+    return itemGroup;
+}
+
+
+/****************************************************************************路网监控****************************************************************************/
+QGraphicsItem* AGVMonitor::searchAGV(int number)
+{
+    QList<QGraphicsItem*> totalItems =  m_myScene->items(Qt::DescendingOrder);
+    for(auto item : totalItems)
+    {
+        QString lsv_Type = item->toolTip().split(",").first();
+        int liv_No = item->toolTip().split(",").last().toInt();
+        if(lsv_Type == "agv" && liv_No == number)
+        {
+            return item;
+        }
+    }
+    qDebug() << "找不到该agv";
+    return NULL;
+}
+
+void AGVMonitor::twinkleAGV(int number)
+{
+    twinkle_no.append(number); //加入闪烁的agv编号
+    timer_twinkle->start(300);
+}
+
+void AGVMonitor::slot_timer_twinkle()
+{
+    for(int NO : twinkle_no)
+    {
+        QGraphicsItem* item = searchAGV(NO);
+        bool flag = !item->isVisible();
+        item->setVisible(flag);
+        m_myScene->update();
+    }
+
+}
+
+void AGVMonitor::stopTwinkle(int number)
+{
+    twinkle_no.removeOne(number); //链表中去除不需闪烁的agv
+    searchAGV(number)->setVisible(true); //保证能显示
+    if(!twinkle_no.size()) //均不需闪烁
+    {
+        timer_twinkle->stop();
+    }
+}
+
+//转向结合路径？
+bool AGVMonitor::isTurning(int number)
+{
+
+}
+
+/*******************************************控制面板*******************************************/
+void AGVMonitor::on_TBtn_up_pressed()
+{
+    qDebug() << "上！！！！！！";
+    directionPressed(1);
+
+}
+
+void AGVMonitor::on_TBtn_up_released()
+{
+    directionReleased();
+}
+
+void AGVMonitor::on_TBtn_down_pressed()
+{
+    qDebug() << "下！！！！！！";
+    directionPressed(2);
+}
+
+void AGVMonitor::on_TBtn_down_released()
+{
+    directionReleased();
+}
+
+void AGVMonitor::on_TBtn_left_pressed()
+{
+    qDebug() << "左！！！！！！";
+    directionPressed(3);
+}
+
+void AGVMonitor::on_TBtn_left_released()
+{
+    directionReleased();
+}
+
+void AGVMonitor::on_TBtn_right_pressed()
+{
+    qDebug() << "右！！！！！！";
+    directionPressed(4);
+}
+
+void AGVMonitor::on_TBtn_right_released()
+{
+    directionReleased();
+}
+
+void AGVMonitor::directionPressed(int dir)
+{
+    if(ui->CBX_AGVNo->currentIndex() != 0 && ui->RBtn_manual->isChecked())
+    {
+        direction = dir;
+        timer_direction = new QTimer;
+        connect(timer_direction,SIGNAL(timeout()),this,SLOT(slot_direction()));
+        timer_direction->start(200);
+    }
+
+}
+
+void AGVMonitor::directionReleased()
+{
+    if(ui->CBX_AGVNo->currentIndex() != 0 && ui->RBtn_manual->isChecked())
+    {
+        if(timer_direction->remainingTime()) //确保没到200ms也能触发指令
+        {
+            slot_direction();
+        }
+        direction = 0;
+        timer_direction->stop();
+        delete timer_direction;
+    }
+}
+
+void AGVMonitor::slot_direction()
+{
+        qDebug() << "串口控制小车协议！！！！！！";
+//        m_mySerialPort->writeData();  根据spinbox调整发一帧数据移动的距离
+}
+/*******************************************控制面板*******************************************/
+
+
+void AGVMonitor::on_RBtn_manual_pressed()
+{
+    if(ui->RBtn_auto->isChecked())
+    {
+        ui->RBtn_auto->setChecked(false);
+    }
+    if(ui->RBtn_manual->isChecked())
+    {
+        return;
+    }
+}
+
+void AGVMonitor::on_RBtn_auto_pressed()
+{
+    if(ui->RBtn_manual->isChecked())
+    {
+        ui->RBtn_manual->setChecked(false);
+    }
+    if(ui->RBtn_auto->isChecked())
+    {
+        return;
+    }
 }

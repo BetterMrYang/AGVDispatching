@@ -33,7 +33,8 @@ SOURCES += \
     myserialport.cpp \
     dialog_viewstatus.cpp \
     thread_dealserialport.cpp \
-    dialog_agvmanagement.cpp
+    dialog_agvmanagement.cpp \
+    Traffic/mydijkstra.cpp
 
 HEADERS += \
         agvmonitor.h \
@@ -43,7 +44,9 @@ HEADERS += \
     myserialport.h \
     dialog_viewstatus.h \
     thread_dealserialport.h \
-    dialog_agvmanagement.h
+    dialog_agvmanagement.h \
+    include.h \
+    Traffic/mydijkstra.h
 
 FORMS += \
         agvmonitor.ui \

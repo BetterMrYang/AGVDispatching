@@ -2,14 +2,19 @@
 #define MYGRAPHICSVIEW_H
 
 #include <QGraphicsView>
+#include <QFrame>
 class MyGraphicsView : public QGraphicsView
 {
 public:
     MyGraphicsView();
-    qreal scaleFactor;
-    qreal realScaling;
+    MyGraphicsView(QFrame*);
+
+
 
 private:
+    qreal scaleFactor;
+    qreal realScaling = 1;
+
     void wheelEvent(QWheelEvent *event) Q_DECL_OVERRIDE;
     void magnify();
     void shrink();
